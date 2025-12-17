@@ -47,27 +47,18 @@ typedef struct {
 } wave_fmt;
 
 typedef struct {
-    uint32_t SubChunk2ID;
-    uint32_t SubChunk2Size;
-
-} wave_data;
-
-typedef struct {
     wave_fmt fmt;
-    wave_data data;
+    BYTE* data;
+    uint32_t dataSize;
 
 } wave;
 
-BYTE* data = 0;
-uint32_t dataSize = 0;
-wave_fmt fmt = { 0 };
 
-void ReadWAV()
+
+wave ReadWAV(const char* fileName)
 {
 
     // http://soundfile.sapp.org/doc/WaveFormat/
-
-    const char* fileName = "C:/Users/olive/source/repos/audio/examples/res/plankton.wav";
 
     FILE* f = fopen(fileName, "rb");
 
@@ -95,6 +86,10 @@ void ReadWAV()
     uint32_t chunkId = 0;
     uint32_t chunkSize = 0;
 
+    wave wave = { 0 };
+
+    wave_fmt fmt = { 0 };
+
     while (fread(&chunkId, sizeof(chunkId), 1, f)) 
     {
         fread(&chunkSize, sizeof(chunkSize), 1, f);
@@ -105,16 +100,16 @@ void ReadWAV()
         }
         else if (chunkId == 0x61746164)
         {
-            dataSize = chunkSize;
-            data = malloc(dataSize);
+            wave.dataSize = chunkSize;
+            wave.data = malloc(wave.dataSize);
 
-            if (!data)
+            if (!wave.data)
             {
                 printf("failed to mallco\n");
                 return;
             }
             
-            fread(data, 1, dataSize, f);
+            fread(wave.data, 1, wave.dataSize, f);
 
             // TODO: Ensure correct number of elements read.
         }
@@ -124,6 +119,11 @@ void ReadWAV()
             fseek(f, chunkSize, SEEK_CUR);
         }
     }
+
+    wave.fmt = fmt;
+
+   
+
 
     /*
     if (header.AudioFormat != 1)
@@ -149,14 +149,8 @@ void ReadWAV()
     */
     fclose(f);
 
-    printf("Blockalign: %d\n", fmt.BlockAlign);
-    for (int i = 0; i < dataSize * fmt.BlockAlign; ++i)
-    {
-        //printf("%d ", data[i]);
-    }
+    return wave;
 }
-
-
 
 BOOL AudioInit()
 {
@@ -283,6 +277,9 @@ void CleanupDevice(IMMDevice* device)
 void Play(IMMDevice* device)
 {
     // TODO: CLeanup
+    wave wave0 = ReadWAV("C:/Users/olive/source/repos/audio/examples/res/plankton.wav");
+    wave wave1 = ReadWAV("C:/Users/olive/source/repos/audio/examples/res/omg.wav");
+
 
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
@@ -401,7 +398,7 @@ void Play(IMMDevice* device)
 
     // TODO: Consider samplerates.
 
-    if (fmt.NumChannels != pwfx->nChannels || fmt.BitsPerSample != pwfx->wBitsPerSample)
+    if (wave0.fmt.NumChannels != pwfx->nChannels || wave0.fmt.BitsPerSample != pwfx->wBitsPerSample)
     {
         printf("mismatch formats.\n");
     }
@@ -416,7 +413,7 @@ void Play(IMMDevice* device)
     }
 
     UINT32 framesWritten = 0;
-    UINT32 totalFrames = dataSize / fmt.BlockAlign;
+    UINT32 totalFrames = wave0.dataSize / wave0.fmt.BlockAlign;
     
     while (framesWritten < totalFrames)
     {
@@ -459,6 +456,7 @@ void Play(IMMDevice* device)
         double thetaIncrement = 2.0 * 3.14159 * frequency / pwfx->nSamplesPerSec;
 
         float* pFloatData = (float*)pData;
+        float* pFloatDataStart = pFloatData;
         UINT32 frames = numFramesAvailable;
         UINT32 channels = pwfx->nChannels;
 
@@ -466,8 +464,8 @@ void Play(IMMDevice* device)
         // we need to convert to 32 bits eexpected output.
 
         // also input data is 2 channel, output is 8/
-
-        int16_t* input = data; 
+        
+        int16_t* input = wave0.data; 
 
         for (UINT32 i = 0; i < frames; ++i)
         {            
@@ -495,6 +493,40 @@ void Play(IMMDevice* device)
 
         }
 
+        pFloatData = pFloatDataStart;
+
+        
+        int16_t* input1 = wave1.data;
+
+        for (UINT32 i = 0; i < frames; ++i)
+        {
+            // 2 channels in input
+            uint32_t frameI = (framesWritten + i) * 2;
+
+            // Handle end of audio.
+            if (frameI > wave1.dataSize / 2) break;
+
+            int16_t d0 = input1[frameI];
+            float f0 = d0 / (float)INT16_MAX;
+
+            int16_t d1 = input1[frameI + 1];
+            float f1 = d1 / (float)INT16_MAX;
+
+            for (UINT32 ch = 0; ch < channels; ++ch)
+            {
+                if (ch % 2 == 0)
+                {
+                    *pFloatData++ += f0;
+                }
+                else
+                {
+                    *pFloatData++ += f1;
+                }
+
+            }
+
+        }
+
         //memcpy(pData, data + framesWritten * fmt.BlockAlign, numFramesAvailable * fmt.BlockAlign);
         
         hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, numFramesAvailable, flags);
@@ -516,9 +548,6 @@ void Play(IMMDevice* device)
 
 int main()
 {
-    ReadWAV();
-
-
     if (!AudioInit())
     {
         return -1;
