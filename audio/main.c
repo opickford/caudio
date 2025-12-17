@@ -23,6 +23,143 @@ const IID IID_IAudioMeterInformation = { 0xC02216F6, 0x8C67, 0x4B5B, { 0x9D, 0x0
 const IID IID_IAudioClient = { 0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2} };
 const IID IID_IAudioRenderClient = { 0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2} };
 
+
+// Note, this way could cause a lot of issues with badly formed files.
+
+typedef struct
+{
+    uint32_t ChunkID;
+    uint32_t ChunkSize;
+    uint32_t Format;
+
+} RIFFHEADER;
+
+
+typedef struct {
+    uint32_t Subchunk1ID;
+    uint32_t Subchunk1Size;
+} WAVEFMT_HEADER;
+
+typedef struct {
+    uint16_t AudioFormat;
+    uint16_t NumChannels;
+    uint32_t SampleRate;
+    uint32_t ByteRate;
+
+    uint16_t BlockAlign;
+    uint16_t BitsPerSample;
+    
+} WAVEFMT;
+
+typedef struct {
+    uint32_t SubChunk2ID;
+    uint32_t SubChunk2Size;
+
+} DATAHEADER;
+
+
+
+
+BYTE* data = 0;
+uint32_t dataSize = 0;
+WAVEFMT fmt = { 0 };
+
+void ReadWAV()
+{
+
+    // http://soundfile.sapp.org/doc/WaveFormat/
+
+    const char* fileName = "C:/Users/olive/source/repos/audio/res/plankton.wav";
+
+    FILE* f = fopen(fileName, "rb");
+
+    // 
+
+    //WavHeader wh = { 0 };
+
+    // TODO: Validate ids 
+
+    RIFFHEADER rf = { 0 };
+    fread(&rf, sizeof(RIFFHEADER), 1, f);
+
+    if (rf.ChunkID != 0x46464952)
+    {
+        printf("invalid rf chunk id\n");
+        return;
+    }
+    if (rf.Format != 0x45564157)
+    {
+        printf("invalid rf format\n");
+        return;
+    }
+
+    // Search for next chunks.
+    uint32_t chunkId = 0;
+    uint32_t chunkSize = 0;
+
+    while (fread(&chunkId, sizeof(chunkId), 1, f)) 
+    {
+        fread(&chunkSize, sizeof(chunkSize), 1, f);
+
+        if (chunkId == 0x20746d66)
+        {
+            fread(&fmt, sizeof(fmt), 1, f);
+        }
+        else if (chunkId == 0x61746164)
+        {
+            dataSize = chunkSize;
+            data = malloc(dataSize);
+
+            if (!data)
+            {
+                printf("failed to mallco\n");
+                return;
+            }
+
+            fread(data, 1, dataSize, f);
+
+            // TODO: Ensure correct number of elements read.
+        }
+        else
+        {
+            // unknown chunkId, skip size of chunk. RIFF format supports different chunks basically.
+            fseek(f, chunkSize, SEEK_CUR);
+        }
+    }
+
+    /*
+    if (header.AudioFormat != 1)
+    {
+        printf("ERROR: .WAV NOT PCM! AudioFormat: %d\n", header.AudioFormat);
+        return;
+    }*/
+
+    /*
+    data = malloc(header.SubChunk2Size);
+    if (!data)
+    {
+        header = (WavHeader){ 0 };
+        return;
+    }
+
+    fread(data, header.SubChunk2Size, 1, f);
+
+    for (int i = 0; i < header.SubChunk2Size; ++i)
+    {
+        printf("%f ", data[i]);
+    }
+    */
+    fclose(f);
+
+    printf("Blockalign: %d\n", fmt.BlockAlign);
+    for (int i = 0; i < dataSize * fmt.BlockAlign; ++i)
+    {
+        //printf("%d ", data[i]);
+    }
+}
+
+
+
 BOOL AudioInit()
 {
     HRESULT hr = CoInitialize(NULL);
@@ -224,7 +361,7 @@ void Play(IMMDevice* device)
         printf("Failed to IAudioClient_GetService\n");
         return;
     }
-
+    
     hr = IAudioRenderClient_GetBuffer(pRenderClient, bufferFrameCount, &pData);
 
     if (FAILED(hr))
@@ -234,7 +371,7 @@ void Play(IMMDevice* device)
     }
 
     // TODO: TEMP: Fill buffer??
-
+    // TODO: Definitely not correct.
     for (int i = 0; i < bufferFrameCount * pwfx->nBlockAlign; ++i)
     {
         pData[i] = MAXUINT8;
@@ -242,10 +379,27 @@ void Play(IMMDevice* device)
 
     hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, bufferFrameCount, flags);
 
+    /*
+    hr = IAudioRenderClient_GetBuffer(pRenderClient, bufferFrameCount, &pData);
+
     if (FAILED(hr))
     {
-        printf("Failed to IAudioRenderClient_ReleaseBuffer\n");
+        printf("Failed to IAudioRenderClient_GetBuffer\n");
         return;
+    }
+
+    memcpy(pData, data, bufferFrameCount * fmt.BlockAlign);
+    hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, bufferFrameCount, flags);
+
+    if (FAILED(hr))
+    {
+        printf("failed to releaase buffer\n");
+    }*/
+
+
+    if (fmt.NumChannels != pwfx->nChannels || fmt.BitsPerSample != pwfx->wBitsPerSample)
+    {
+        printf("mismatch formats.\n");
     }
 
     hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / pwfx->nSamplesPerSec;
@@ -257,10 +411,12 @@ void Play(IMMDevice* device)
         return;
     }
 
-    while (flags != AUDCLNT_BUFFERFLAGS_SILENT)
+    UINT32 framesWritten = 0;
+    UINT32 totalFrames = dataSize / fmt.BlockAlign;
+    
+    while (framesWritten < totalFrames)
     {
-        Sleep((DWORD)(hnsActualDuration / REFTIMES_PER_MILLISEC / 2));
-
+        // This gets frames that are going to be played.
         hr = IAudioClient_GetCurrentPadding(pAudioClient, &numFramesPadding);
         if (FAILED(hr))
         {
@@ -268,8 +424,22 @@ void Play(IMMDevice* device)
             return;
         }
 
+        // Calculate how much space there is for more frames.
         numFramesAvailable = bufferFrameCount - numFramesPadding;
-        printf("numFramesAvailable: %d\n", numFramesAvailable);
+
+        if (numFramesAvailable == 0)
+        {
+            Sleep(1);
+            continue;
+        }
+        if (numFramesAvailable > totalFrames - framesWritten)
+        {
+            numFramesAvailable = totalFrames - framesWritten;
+        }
+
+
+        //printf("numFramesAvailable: %d\n", numFramesAvailable);
+        //printf("numFramesPadding: %d\n", numFramesPadding);
 
         hr = IAudioRenderClient_GetBuffer(pRenderClient, numFramesAvailable, &pData);
 
@@ -279,7 +449,7 @@ void Play(IMMDevice* device)
             return;
         }
 
-        float frequency = 50.0f; // A4
+        float frequency = 450.0f; // A4
         float amplitude = 0.25f;
         static double theta = 0.0;
         double thetaIncrement = 2.0 * 3.14159 * frequency / pwfx->nSamplesPerSec;
@@ -288,18 +458,41 @@ void Play(IMMDevice* device)
         UINT32 frames = numFramesAvailable;
         UINT32 channels = pwfx->nChannels;
 
+        // Input data is 16bits per sample 
+        // we need to convert to 32 bits eexpected output.
+
+        // also input data is 2 channel, output is 8/
+
+        int16_t* input = data; 
+
         for (UINT32 i = 0; i < frames; ++i)
-        {
-            float sample = (float)(sin(theta) * amplitude);
-            theta += thetaIncrement;
+        {            
+            // 2 channels in input
+            uint32_t frameI = (framesWritten + i) * 2;
+
+            int16_t d0 = input[frameI];
+            float f0 = d0 / (float)INT16_MAX;
+
+            int16_t d1 = input[frameI + 1];
+            float f1 = d1 / (float)INT16_MAX;
 
             for (UINT32 ch = 0; ch < channels; ++ch)
             {
-                *pFloatData++ = sample;
+                if (ch % 2 == 0)
+                {
+                    *pFloatData++ = f0;
+                }
+                else
+                {
+                    *pFloatData++ = f1;
+                }
+                
             }
+
         }
 
-
+        //memcpy(pData, data + framesWritten * fmt.BlockAlign, numFramesAvailable * fmt.BlockAlign);
+        
         hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, numFramesAvailable, flags);
 
         if (FAILED(hr))
@@ -307,12 +500,21 @@ void Play(IMMDevice* device)
             printf("Failed to IAudioRenderClient_ReleaseBuffer\n");
             return;
         }
+
+        framesWritten += numFramesAvailable;
+
     }
+
+    printf("done\n");
+
 }
 
 
 int main()
 {
+    ReadWAV();
+
+
     if (!AudioInit())
     {
         return -1;
