@@ -15,7 +15,6 @@
 
 #include <stdbool.h>
 
-DEFINE_GUID(IDD_IMMDeviceCollection, 0x0bd7a1be, 0x7a1a, 0x44db, 0x83, 0x97, 0xcc, 0x53, 0x92, 0x38, 0x7b, 0x5e);
 const CLSID CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
 const IID IID_IMMDeviceEnumerator = { 0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
 const IID IID_IAudioMeterInformation = { 0xC02216F6, 0x8C67, 0x4B5B, { 0x9D, 0x00, 0xD0, 0x08, 0xE7, 0x3E, 0x00, 0x64 } };
@@ -23,22 +22,18 @@ const IID IID_IAudioMeterInformation = { 0xC02216F6, 0x8C67, 0x4B5B, { 0x9D, 0x0
 const IID IID_IAudioClient = { 0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2} };
 const IID IID_IAudioRenderClient = { 0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2} };
 
-
-// Note, this way could cause a lot of issues with badly formed files.
-
 typedef struct
 {
-    uint32_t ChunkID;
-    uint32_t ChunkSize;
-    uint32_t Format;
+    uint32_t chunk_id;
+    uint32_t chunk_size;
+    uint32_t format;
 
-} RIFFHEADER;
-
+} riff_header;
 
 typedef struct {
-    uint32_t Subchunk1ID;
+    uint32_t chunk_id;
     uint32_t Subchunk1Size;
-} WAVEFMT_HEADER;
+} wave_fmt_header;
 
 typedef struct {
     uint16_t AudioFormat;
@@ -49,27 +44,30 @@ typedef struct {
     uint16_t BlockAlign;
     uint16_t BitsPerSample;
     
-} WAVEFMT;
+} wave_fmt;
 
 typedef struct {
     uint32_t SubChunk2ID;
     uint32_t SubChunk2Size;
 
-} DATAHEADER;
+} wave_data;
 
+typedef struct {
+    wave_fmt fmt;
+    wave_data data;
 
-
+} wave;
 
 BYTE* data = 0;
 uint32_t dataSize = 0;
-WAVEFMT fmt = { 0 };
+wave_fmt fmt = { 0 };
 
 void ReadWAV()
 {
 
     // http://soundfile.sapp.org/doc/WaveFormat/
 
-    const char* fileName = "C:/Users/olive/source/repos/audio/res/plankton.wav";
+    const char* fileName = "C:/Users/olive/source/repos/audio/examples/res/plankton.wav";
 
     FILE* f = fopen(fileName, "rb");
 
@@ -79,15 +77,15 @@ void ReadWAV()
 
     // TODO: Validate ids 
 
-    RIFFHEADER rf = { 0 };
-    fread(&rf, sizeof(RIFFHEADER), 1, f);
+    riff_header rf = { 0 };
+    fread(&rf, sizeof(riff_header), 1, f);
 
-    if (rf.ChunkID != 0x46464952)
+    if (rf.chunk_id != 0x46464952)
     {
         printf("invalid rf chunk id\n");
         return;
     }
-    if (rf.Format != 0x45564157)
+    if (rf.format != 0x45564157)
     {
         printf("invalid rf format\n");
         return;
@@ -115,7 +113,7 @@ void ReadWAV()
                 printf("failed to mallco\n");
                 return;
             }
-
+            
             fread(data, 1, dataSize, f);
 
             // TODO: Ensure correct number of elements read.
@@ -284,6 +282,8 @@ void CleanupDevice(IMMDevice* device)
 
 void Play(IMMDevice* device)
 {
+    // TODO: CLeanup
+
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
 
@@ -324,6 +324,8 @@ void Play(IMMDevice* device)
         return;
     }
 
+    // TODO: Could try setting format to the closest match to the wav file. Although may not be 
+    //       that difficult to manually convert.
     hr = IAudioClient_Initialize(
         pAudioClient,
         AUDCLNT_SHAREMODE_SHARED,
@@ -396,6 +398,8 @@ void Play(IMMDevice* device)
         printf("failed to releaase buffer\n");
     }*/
 
+
+    // TODO: Consider samplerates.
 
     if (fmt.NumChannels != pwfx->nChannels || fmt.BitsPerSample != pwfx->wBitsPerSample)
     {
