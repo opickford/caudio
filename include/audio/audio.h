@@ -1,14 +1,42 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
+#include <stdint.h>
 
+typedef struct IMMDevice IMMDevice;
+
+
+// TODO: Organise all this later.
+typedef struct 
+{
+    uint32_t cursor;
+    uint32_t size;
+
+    float* data;
+} sound_t;
+
+// TODO: Some function will need to parse the wav into the sound_t
+
+// TODO: Need to actually plan the API.
+
+
+// TODO: Store vector of playing sounds.
 typedef struct
 {
-    int a;
-} audio_manager;
+    IMMDevice* device;
+} audio_t;
 
 
-void audio_init();
+/*
+
+Should set the output device basically.
+
+*/
+uint8_t audio_init(audio_t* audio);
+
+void audio_play();
+
+void audio_tick();
 
 void audio_destroy();
 
@@ -47,6 +75,28 @@ audio_tick, called as often as possible:
 - mixes them
 
 Note, no need to mix into our own buffer, can do it on demand.
+
+
+We want to support potential future file formats. even if we don't actually want
+to use them. therefore we need some interface for loading the sound. a sound must
+store it's format too. so it can be converted when playing. We could convert on
+sound load, but that would mean potentially storing more memory assuming the 
+sound is a worse quality than the device??
+
+Need to consider resource loading...
+
+we can load some file format into an audio source.
+
+this audio source will then be played, which essentially creates a sound from it.
+
+for now an audio source can really just support the wav data? can be updated
+in the future.
+
+audio_src_from_wav?
+
+
+
+
 
 
 
