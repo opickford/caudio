@@ -77,10 +77,10 @@ void GetDefaultDevice(IMMDevice** device)
     *device = pEndpoint;
 }
 
-// TODO: How do we return success/failure?
-uint8_t audio_init(audio_t* audio)
+// TODO: How do we return success/failure? (a common issue of mine.)
+uint8_t audio_init(Audio* audio)
 {
-    memset(audio, 0, sizeof(audio_t));
+    memset(audio, 0, sizeof(Audio));
 
     // Initialise COM.
     HRESULT hr = CoInitialize(NULL);
@@ -92,13 +92,14 @@ uint8_t audio_init(audio_t* audio)
     }
 
     GetDefaultDevice(&audio->device);
-
-
-
-
-
-
-
-
+    
     return 1;
+}
+
+void audio_destroy(Audio* audio)
+{
+    if (audio->device) IMMDevice_Release(audio->device);
+    audio->device = NULL;
+
+    CoUninitialize();
 }
