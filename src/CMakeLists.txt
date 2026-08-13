@@ -1,8 +1,10 @@
 add_library(audio STATIC
     "audio.c"
+	"wav.c"
    
 
     "../include/audio/audio.h"
+	"../include/audio/wav.h"
 )
 
 add_library(audio::audio ALIAS audio)

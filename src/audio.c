@@ -15,6 +15,8 @@
 
 #include <stdint.h>
 
+#include "audio/wav.h"
+
 // TODO: Define in separate header?
 const CLSID CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
 const IID IID_IMMDeviceEnumerator = { 0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
@@ -22,6 +24,52 @@ const IID IID_IAudioMeterInformation = { 0xC02216F6, 0x8C67, 0x4B5B, { 0x9D, 0x0
 
 const IID IID_IAudioClient = { 0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2} };
 const IID IID_IAudioRenderClient = { 0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2} };
+
+// TODO: some device header?
+void PrintDeviceName(IMMDevice* device)
+{
+    IPropertyStore* pProps = NULL;
+    LPWSTR pwszID = NULL;
+
+    HRESULT hr = IMMDevice_GetId(
+        device,
+        &pwszID
+    );
+
+    if (FAILED(hr))
+    {
+        printf("failed to get id\n");
+        return -1;
+    }
+
+    hr = IMMDevice_OpenPropertyStore(device, STGM_READ, &pProps);
+
+    if (FAILED(hr))
+    {
+        printf("failed to open property store\n");
+        return -1;
+    }
+
+    PROPVARIANT varName = { 0 };
+    hr = IPropertyStore_GetValue(pProps, &PKEY_Device_FriendlyName, &varName);
+
+    if (FAILED(hr))
+    {
+        printf("failed to IPropertyStore_GetValue\n");
+        return -1;
+    }
+
+    if (varName.vt != VT_EMPTY)
+    {
+        printf("Endpoint %S\n", varName.pwszVal);
+    }
+
+    CoTaskMemFree(pwszID);
+    pwszID = NULL;
+    PropVariantClear(&varName);
+
+    IPropertyStore_Release(pProps);
+}
 
 // TODO: Some internal device file??
 void GetDefaultDevice(IMMDevice** device)
@@ -71,10 +119,12 @@ void GetDefaultDevice(IMMDevice** device)
         return -1;
     }
 
+
     IMMDeviceEnumerator_Release(pEnumerator);
     IMMDeviceCollection_Release(pCollection);
 
     *device = pEndpoint;
+    
 }
 
 // TODO: How do we return success/failure? (a common issue of mine.)
@@ -93,7 +143,332 @@ uint8_t audio_init(Audio* audio)
 
     GetDefaultDevice(&audio->device);
     
+#define REFTIMES_PER_SEC  10000000
+#define REFTIMES_PER_MILLISEC  10000
+
+    REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
+    REFERENCE_TIME hnsActualDuration;
+
+    UINT32 bufferFrameCount;
+    UINT32 numFramesAvailable;
+    UINT32 numFramesPadding;
+    BYTE* pData;
+    DWORD flags = 0;
+
+    hr = IMMDevice_Activate(
+        audio->device,
+        &IID_IAudioClient,
+        CLSCTX_ALL,
+        NULL,
+        (void**)&audio->pAudioClient
+    );
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IMMDevice_Activate\n");
+        return;
+    }
+
+    
+    hr = IAudioClient_GetMixFormat(audio->pAudioClient, &audio->pwfx);
+
+    
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_GetMixFormat\n");
+        return;
+    }
+
+    // TODO: TEMP DEBUGGIN
+    printf("Num Channels: %u, Samples Per Sec: %u\n", audio->pwfx->nChannels, audio->pwfx->nSamplesPerSec);
+
+    // TODO: Could try setting format to the closest match to the wav file. Although may not be 
+    //       that difficult to manually convert.
+    hr = IAudioClient_Initialize(
+        audio->pAudioClient,
+        AUDCLNT_SHAREMODE_SHARED,
+        0,
+        hnsRequestedDuration,
+        0,
+        audio->pwfx,
+        NULL
+    );
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_Initialize\n");
+        return;
+    }
+
+    hr = IAudioClient_GetBufferSize(audio->pAudioClient, &bufferFrameCount);
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_GetBufferSize\n");
+        return;
+    }
+
+    printf("bufferFrameCount: %d\n", bufferFrameCount);
+
+    hr = IAudioClient_GetService(
+        audio->pAudioClient,
+        &IID_IAudioRenderClient,
+        &audio->pRenderClient
+    );
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_GetService\n");
+        return;
+    }
+
+    /*
+    hr = IAudioRenderClient_GetBuffer(pRenderClient, bufferFrameCount, &pData);
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioRenderClient_GetBuffer\n");
+        return;
+    }
+
+    memcpy(pData, data, bufferFrameCount * fmt.BlockAlign);
+    hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, bufferFrameCount, flags);
+
+    if (FAILED(hr))
+    {
+        printf("failed to releaase buffer\n");
+    }*/
+
+
+    // // TODO: Consider samplerates.
+
+    // if (wave0.fmt.NumChannels != pwfx->nChannels || wave0.fmt.BitsPerSample != pwfx->wBitsPerSample)
+    // {
+    //     printf("mismatch formats.\n");
+    // }
+
+    hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / audio->pwfx->nSamplesPerSec;
+
+    hr = IAudioClient_Start(audio->pAudioClient);
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_Start\n");
+        return;
+    }
+
+    // TODO: TEMP: logging inf
+
+
+
     return 1;
+}
+
+// TODO: readwav should be converting this to sound.. or maybe wav to sound..
+
+void audio_play(Audio* audio, Wav wav)
+{
+    if (audio->num_sounds >= MAX_SOUNDS)
+    {
+        printf("Max sounds reached.\n");
+        return;
+    }
+
+    uint32_t num_samples = wav.dataSize / (wav.fmt.BitsPerSample / 8);
+
+    float* data = malloc(num_samples * sizeof(float));
+    if (!data)
+    {
+        printf("TODO: failed to malloc\n");
+        return;
+    }
+
+    if (wav.fmt.BitsPerSample != 16)
+    {
+        printf("TODO: wav is not 16 bits per sample\n");
+        return;
+    }
+
+    // TODO: handle BitsPerSample? how do we deal if the wav is not 16 bits per sample? (or if it is not 2 channels?)
+    for (int i = 0; i < num_samples; ++i)
+    {
+        int16_t d = ((int16_t*)wav.data)[i];
+        float f = d / (float)INT16_MAX;
+
+        data[i] = f;
+    }
+
+    uint32_t bytes_per_sample = wav.fmt.BitsPerSample / 8;
+    uint32_t frame_size = bytes_per_sample * wav.fmt.NumChannels;
+    uint32_t num_frames = wav.dataSize / frame_size;
+
+    // TODO: sound size num samples is wrong. we need to name these more clearly anyways, size is misleading.
+    // num samples is num samples. sound size is just odd.
+    // TODO: rename size -> num_frames.
+    Sound sound = {
+        .cursor = 0,
+        .size = num_frames,
+        .data = data
+    };
+
+    audio->sounds[audio->num_sounds++] = sound;
+}
+
+
+void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
+{
+    // TODO: stop hardcoding channels, need to get this from the sound data.
+    uint32_t in_channels = 2;
+    uint32_t out_channels = 2;
+    
+    //if (sound->cursor >= sound->size)
+    //{
+    //    sound->cursor = 0;
+    //    printf("sound restarted\n");
+    //    //return;
+    //}
+    float* input = sound->data + sound->cursor * in_channels;
+   
+    for (UINT32 i = 0; i < frames; ++i)
+    {
+        // Loop audio if at end, should only do this if sound is looping.
+        if (sound->cursor >= sound->size)
+        {
+            sound->cursor = 0;
+        }
+
+        // TODO: this filling loop must be fast.
+        for (UINT32 ch = 0; ch < out_channels; ++ch)
+        {
+            // TODO: hack for just duplicating the 2 channels, better way would be much nicer.
+            if (ch % 2 == 0)
+            {
+                out[i * out_channels + ch] += input[i * in_channels + 0];
+            }
+            else
+            {
+                out[i * out_channels + ch] += input[i * in_channels + 1];
+            }
+        }
+
+        // TODO: rename to better reflect that cursor = num frames?
+        ++sound->cursor;
+    }
+}
+
+
+void audio_tick(Audio* audio)
+{
+    HRESULT hr;
+
+    UINT32 bufferFrameCount;
+    hr = IAudioClient_GetBufferSize(audio->pAudioClient, &bufferFrameCount);
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_GetBufferSize\n");
+        return;
+    }
+
+    printf("bufferFrameCount: %d\n", bufferFrameCount);
+
+    
+    
+    DWORD flags = 0;
+
+
+    //UINT32 framesWritten = 0;
+
+    // TODO: how to manage this loop
+    //UINT32 totalFrames = wave0.dataSize / wave0.fmt.BlockAlign;
+    
+    // TODO: do we want to write all the frames in one tick? Or do we want to write a few frames each tick? (probably the latter)
+    //while (framesWritten < totalFrames)
+    //{
+        // This gets frames that are going to be played.
+    UINT32 numFramesPadding;
+    hr = IAudioClient_GetCurrentPadding(audio->pAudioClient, &numFramesPadding);
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioClient_GetCurrentPadding\n");
+        return;
+    }
+
+    // Calculate how much space there is for more frames.
+    UINT32 numFramesAvailable = bufferFrameCount - numFramesPadding;
+    if (numFramesAvailable == 0)
+    {
+        Sleep(1);
+        //continue;
+        return;
+    }
+
+    printf("numFramesAvailable: %d\n", numFramesAvailable);
+
+    // TODO: This is a hack to avoid writing more frames than we have. Need to figure out how to handle this properly.
+    // if (numFramesAvailable > totalFrames - framesWritten)
+    // {
+    //     numFramesAvailable = totalFrames - framesWritten;
+    // }
+
+
+    //printf("numFramesAvailable: %d\n", numFramesAvailable);
+    //printf("numFramesPadding: %d\n", numFramesPadding);
+
+    BYTE* pData;
+    hr = IAudioRenderClient_GetBuffer(audio->pRenderClient, numFramesAvailable, &pData);
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioRenderClient_GetBuffer\n");
+        return;
+    }
+
+
+    //float frequency = 450.0f; // A4
+    //float amplitude = 0.25f;
+    //static double theta = 0.0;
+    //double thetaIncrement = 2.0 * 3.14159 * frequency / pwfx->nSamplesPerSec;
+
+    float* pFloatData = (float*)pData;
+    float* pFloatDataStart = pFloatData;
+    UINT32 frames = numFramesAvailable;
+    //UINT32 channels = pwfx->nChannels;
+
+    // TODO: TEMP: Fill buffer??
+    // TODO: Definitely not correct.
+    for (int i = 0; i < numFramesAvailable * audio->pwfx->nBlockAlign; ++i)
+    {
+        pData[i] = 0;
+    }
+
+
+    // Input data is 16bits per sample 
+    // we need to convert to 32 bits expected output.
+
+    // also input data is 2 channel, output is 8/
+       
+    // TODO: go through each sound, check if it has finished playing, if not, write to the output buffer.
+
+
+    write_sound(audio, &audio->sounds[0], pFloatData, frames);
+
+
+
+        
+    hr = IAudioRenderClient_ReleaseBuffer(audio->pRenderClient, numFramesAvailable, flags);
+
+    if (FAILED(hr))
+    {
+        printf("Failed to IAudioRenderClient_ReleaseBuffer\n");
+        return;
+    }
+
+    //framesWritten += numFramesAvailable;
+
+    //}
+
+    printf("done\n");
 }
 
 void audio_destroy(Audio* audio)
