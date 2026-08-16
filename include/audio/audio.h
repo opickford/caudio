@@ -14,7 +14,7 @@ typedef struct IMMDevice IMMDevice;
 typedef struct 
 {
     uint32_t cursor;
-    uint32_t size;
+    uint32_t num_frames;
 
     float* data;
 } Sound;
@@ -26,6 +26,7 @@ typedef struct
 {
     // TODO: temp fixed array
     Sound sounds[MAX_SOUNDS]; 
+    uint32_t num_sounds;
 
     IMMDevice* device;
 
@@ -34,7 +35,6 @@ typedef struct
 
     WAVEFORMATEX* pwfx;
 
-    uint32_t num_sounds;
 } Audio;
 
 uint8_t audio_init(Audio* audio);

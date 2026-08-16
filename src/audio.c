@@ -146,6 +146,7 @@ uint8_t audio_init(Audio* audio)
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
 
+    // TODO: this is only requesting a second, is this correct?
     REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
     REFERENCE_TIME hnsActualDuration;
 
@@ -171,7 +172,6 @@ uint8_t audio_init(Audio* audio)
 
     
     hr = IAudioClient_GetMixFormat(audio->pAudioClient, &audio->pwfx);
-
     
 
     if (FAILED(hr))
@@ -180,9 +180,13 @@ uint8_t audio_init(Audio* audio)
         return;
     }
 
-    // TODO: TEMP DEBUGGIN
-    printf("Num Channels: %u, Samples Per Sec: %u\n", audio->pwfx->nChannels, audio->pwfx->nSamplesPerSec);
-
+    // TODO: better way of logging
+    printf("Num Channels: %u\n", audio->pwfx->nChannels);
+    printf("Bits Per Sample: %u\n", audio->pwfx->wBitsPerSample);
+    printf("Block Align: %u\n", audio->pwfx->nBlockAlign);
+    printf("Format Tag: %u\n", audio->pwfx->wFormatTag);
+    printf("Samples Per Second: %u\n", audio->pwfx->nSamplesPerSec);
+    
     // TODO: Could try setting format to the closest match to the wav file. Although may not be 
     //       that difficult to manually convert.
     hr = IAudioClient_Initialize(
@@ -305,10 +309,10 @@ void audio_play(Audio* audio, Wav wav)
 
     // TODO: sound size num samples is wrong. we need to name these more clearly anyways, size is misleading.
     // num samples is num samples. sound size is just odd.
-    // TODO: rename size -> num_frames.
+    //  size -> num_frames.
     Sound sound = {
         .cursor = 0,
-        .size = num_frames,
+        .num_frames = num_frames,
         .data = data
     };
 
@@ -333,10 +337,8 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
    
     for (UINT32 i = 0; i < frames; ++i)
     {
-
-
         // Loop audio if at end, should only do this if sound is looping.
-        if (sound->cursor >= sound->size)
+        if (sound->cursor >= sound->num_frames)
         {
             // TODO: MUST RESET INPUT HERE! OR JUST DO THIS DIFFERENTLY, IT'S A BIT SKETCH.
             sound->cursor = 0;
@@ -351,9 +353,9 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
         for (UINT32 ch = 0; ch < out_channels; ++ch)
         {
             // TODO: hack for just duplicating the 2 channels, better way would be much nicer.
+            // TODO: doesn't even work 
             if (ch % 2 == 0)
             {
-                // TODO: still getting a crash here for some reason.
                 out[i * out_channels + ch] += input[ch];
             }
             else
@@ -451,7 +453,9 @@ void audio_tick(Audio* audio)
     for (int i = 0; i < numFramesAvailable * audio->pwfx->nBlockAlign; ++i)
     {
         pData[i] = 0;
+
     }
+    memset(pData, 0, numFramesAvailable * audio->pwfx->nBlockAlign);
 
 
     // Input data is 16bits per sample 
@@ -462,11 +466,10 @@ void audio_tick(Audio* audio)
     // TODO: go through each sound, check if it has finished playing, if not, write to the output buffer.
 
     // TODO: what happens to the audio->pwfx->nBlockAlign?
-    write_sound(audio, &audio->sounds[0], pFloatData, frames);
-    write_sound(audio, &audio->sounds[1], pFloatData, frames);
-
-
-
+    for (int i = 0; i < audio->num_sounds; ++i)
+    {
+        write_sound(audio, &audio->sounds[i], pFloatData, frames);
+    }
         
     hr = IAudioRenderClient_ReleaseBuffer(audio->pRenderClient, numFramesAvailable, flags);
 
