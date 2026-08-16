@@ -162,8 +162,7 @@ Sound sound_from_wav(Wav* wav)
     Sound sound = {
         .data = data,
         .num_frames = num_frames,
-        .num_channels = wav->fmt.NumChannels,
-        .cursor = 0
+        .num_channels = wav->fmt.NumChannels
     };
 
     return sound;
@@ -290,11 +289,6 @@ uint8_t audio_init(Audio* audio)
 
     hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / audio->pwfx->nSamplesPerSec;
 
-
-
-
-
-
     hr = IAudioClient_Start(audio->pAudioClient);
     if (FAILED(hr))
     {
@@ -305,50 +299,84 @@ uint8_t audio_init(Audio* audio)
     return 1;
 }
 
-void audio_play(Audio* audio, Sound sound)
+SoundInstance* audio_play(Audio* audio, Sound* sound)
 {
-    // TODO: TEMP: remove this limit when I have a dynamic array.
-    if (audio->mixer.num_sounds >= MAX_SOUNDS)
+    SoundInstance* inst = 0;
+    for (int i = 0; i < audio->mixer.num_instances; ++i)
     {
-        printf("Max sounds reached.\n");
-        return;
+        SoundInstance* old = &audio->mixer.instances[i];
+        if (!old->playing)
+        {
+            // Found a sound to reuse.
+            inst = old;
+            break;
+        }
     }
 
-    audio->mixer.sounds[audio->mixer.num_sounds++] = sound;
+    if (!inst)
+    {
+        // No space for new instances.
+        // TODO: TEMP: remove this limit when I have a dynamic array.
+
+        if (audio->mixer.num_instances >= MAX_SOUND_INSTANCES)
+        {
+            printf("Max sounds reached.\n");
+            return 0;
+        }
+
+        inst = &audio->mixer.instances[audio->mixer.num_instances++];
+    }
+
+    // Reset instance state.
+    memset(inst, 0, sizeof(SoundInstance));
+
+    inst->playing = 1;
+    inst->volume = 1;
+    inst->sound = sound;
+
+    return inst;
 }
 
-static void write_sound(Sound* sound, float* out, uint32_t frames, uint32_t out_channels)
+static void write_sound(SoundInstance* inst, float* out, uint32_t frames, uint32_t out_channels)
 {
     for (UINT32 i = 0; i < frames; ++i)
     {
         // Loop audio if at end, should only do this if sound is looping.
-        if (sound->cursor >= sound->num_frames)
+        if (inst->cursor >= inst->sound->num_frames)
         {
-            sound->cursor = 0;
+            if (inst->looping)
+            {
+                inst->cursor = 0;
+            }
+            else
+            {
+                inst->playing = 0;
+                return;
+            }
         }
 
         // TODO: i don't like this.
-        float* input = sound->data + sound->cursor * sound->num_channels;
+        float* input = inst->sound->data + inst->cursor * inst->sound->num_channels;
 
         // TODO: can definitely move if outside of loop.
-        if (sound->num_channels == 1)
+        if (inst->sound->num_channels == 1)
         {
             for (UINT32 ch = 0; ch < out_channels; ++ch)
             {
-                out[i * out_channels + ch] += input[0];
+                out[i * out_channels + ch] += input[0] * inst->volume;
             }
         }
-        else if (sound->num_channels == 2)
+        else if (inst->sound->num_channels == 2)
         {
             // TODO: For now we're just duplicating the stereo pair for all
             //       output channels. In the future we will handle differently.
             for (int ch = 0; ch < out_channels; ++ch) 
             {
-                out[i * out_channels + ch] += input[ch % 2];
+                out[i * out_channels + ch] += input[ch % 2] * inst->volume;
             }
         }
 
-        ++sound->cursor;
+        ++inst->cursor;
     }
 }
 
@@ -359,9 +387,9 @@ void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
     //       system was reinitialised?
     memset(mixer->mix_buffer, 0, (size_t)frames * mixer->output_channels * sizeof(float));
 
-    for (int i = 0; i < mixer->num_sounds; ++i)
+    for (int i = 0; i < mixer->num_instances; ++i)
     {
-        write_sound(&mixer->sounds[i], mixer->mix_buffer, frames, mixer->output_channels);
+        write_sound(&mixer->instances[i], mixer->mix_buffer, frames, mixer->output_channels);
     }
 }
 
@@ -377,8 +405,6 @@ void audio_tick(Audio* audio)
         printf("Failed to IAudioClient_GetBufferSize\n");
         return;
     }
-
-    printf("bufferFrameCount: %d\n", bufferFrameCount);
 
     DWORD flags = 0;
     
@@ -396,8 +422,6 @@ void audio_tick(Audio* audio)
     {
         return;
     }
-
-    printf("numFramesAvailable: %d\n", numFramesAvailable);
 
     BYTE* pData;
     hr = IAudioRenderClient_GetBuffer(audio->pRenderClient, numFramesAvailable, &pData);

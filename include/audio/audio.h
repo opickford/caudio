@@ -20,12 +20,23 @@ typedef struct
     uint32_t num_frames;
     uint32_t num_channels;
 
-    uint32_t cursor;
 } Sound;
+
+typedef struct
+{
+    Sound* sound;
+    uint32_t cursor;
+
+    float volume;
+    uint8_t looping;
+
+    uint8_t playing;
+
+} SoundInstance;
 
 Sound sound_from_wav(Wav* wav);
 
-#define MAX_SOUNDS 5
+#define MAX_SOUND_INSTANCES 100
 
 typedef struct
 {
@@ -36,8 +47,8 @@ typedef struct
     uint32_t mix_buffer_frames;
 
     // TODO: temporary fixed buffer.
-    Sound sounds[MAX_SOUNDS];
-    uint32_t num_sounds;
+    SoundInstance instances[MAX_SOUND_INSTANCES];
+    uint32_t num_instances;
 
 } AudioMixer;
 
@@ -59,7 +70,7 @@ typedef struct
 
 uint8_t audio_init(Audio* audio);
 
-void audio_play(Audio* audio, Sound sound);
+SoundInstance* audio_play(Audio* audio, Sound* sound);
 
 void audio_tick(Audio* audio);
 
