@@ -23,12 +23,18 @@ int main()
 
     PrintDeviceName(audio.device);
 
+    // TODO: gotta figure out how to play the sounds, we probably want to 
+    // convert a wav into a sound straight away, then this can be reused.
+    // Also, do we want the audio manager to remove a sound when it's done?
+    // what if we had a sound that is frequently played, like a gunshot?
     audio_play(&audio, wave0);
     audio_play(&audio, wave1);
 
+    // Simulate gameloop..
     while (1)
     {
         audio_tick(&audio);
+        Sleep(10);
     }
 
     audio_destroy(&audio);

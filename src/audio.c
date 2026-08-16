@@ -1,6 +1,8 @@
 #include "audio/audio.h"
 
 #include <stdio.h>
+#include <stdint.h>
+#include <malloc.h>
 
 #define COBJMACROS
 #include <initguid.h>
@@ -10,10 +12,6 @@
 #include <endpointvolume.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <Audioclient.h>
-
-#include <math.h>
-
-#include <stdint.h>
 
 #include "audio/wav.h"
 
@@ -261,10 +259,6 @@ uint8_t audio_init(Audio* audio)
         return;
     }
 
-    // TODO: TEMP: logging inf
-
-
-
     return 1;
 }
 
@@ -272,6 +266,7 @@ uint8_t audio_init(Audio* audio)
 
 void audio_play(Audio* audio, Wav wav)
 {
+    // TODO: TEMP: remove this limit when I have a dynamic array.
     if (audio->num_sounds >= MAX_SOUNDS)
     {
         printf("Max sounds reached.\n");
@@ -279,7 +274,8 @@ void audio_play(Audio* audio, Wav wav)
     }
 
     // TODO: this is the number of individual channel samples, not frames.
-    uint32_t num_samples = wav.dataSize / (wav.fmt.BitsPerSample / 8);
+    const uint32_t bytes_per_sample = wav.fmt.BitsPerSample / 8;
+    const uint32_t num_samples = wav.dataSize / bytes_per_sample;
 
     float* data = malloc(num_samples * sizeof(float));
     if (!data)
@@ -303,13 +299,9 @@ void audio_play(Audio* audio, Wav wav)
         data[i] = f;
     }
 
-    uint32_t bytes_per_sample = wav.fmt.BitsPerSample / 8;
-    uint32_t frame_size = bytes_per_sample * wav.fmt.NumChannels;
-    uint32_t num_frames = wav.dataSize / frame_size;
+    uint32_t bytes_per_frame = bytes_per_sample * wav.fmt.NumChannels;
+    uint32_t num_frames = wav.dataSize / bytes_per_frame;
 
-    // TODO: sound size num samples is wrong. we need to name these more clearly anyways, size is misleading.
-    // num samples is num samples. sound size is just odd.
-    //  size -> num_frames.
     Sound sound = {
         .cursor = 0,
         .num_frames = num_frames,
@@ -319,31 +311,18 @@ void audio_play(Audio* audio, Wav wav)
     audio->sounds[audio->num_sounds++] = sound;
 }
 
-
 void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
 {
     // TODO: stop hardcoding channels, need to get this from the sound data.
     uint32_t in_channels = 2;
     uint32_t out_channels = 2;
-    
-    //if (sound->cursor >= sound->size)
-    //{
-    //    sound->cursor = 0;
-    //    printf("sound restarted\n");
-    //    //return;
-    //}
-
-    //float* input = sound->data + sound->cursor * in_channels;
    
     for (UINT32 i = 0; i < frames; ++i)
     {
         // Loop audio if at end, should only do this if sound is looping.
         if (sound->cursor >= sound->num_frames)
         {
-            // TODO: MUST RESET INPUT HERE! OR JUST DO THIS DIFFERENTLY, IT'S A BIT SKETCH.
             sound->cursor = 0;
-
-            // TODO: hold up this isn't even reused.
         }
 
         // TODO: i don't like this.
@@ -364,7 +343,6 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
             }
         }
 
-        // TODO: rename to better reflect that cursor = num frames?
         ++sound->cursor;
     }
 }
@@ -390,9 +368,6 @@ void audio_tick(Audio* audio)
     DWORD flags = 0;
 
 
-    //UINT32 framesWritten = 0;
-
-    // TODO: how to manage this loop
     //UINT32 totalFrames = wave0.dataSize / wave0.fmt.BlockAlign;
     
     // TODO: do we want to write all the frames in one tick? Or do we want to write a few frames each tick? (probably the latter)
@@ -406,27 +381,15 @@ void audio_tick(Audio* audio)
         printf("Failed to IAudioClient_GetCurrentPadding\n");
         return;
     }
-
-    // Calculate how much space there is for more frames.
+    
+    // Determine if we can write.
     UINT32 numFramesAvailable = bufferFrameCount - numFramesPadding;
     if (numFramesAvailable == 0)
     {
-        Sleep(1);
-        //continue;
         return;
     }
 
     printf("numFramesAvailable: %d\n", numFramesAvailable);
-
-    // TODO: This is a hack to avoid writing more frames than we have. Need to figure out how to handle this properly.
-    // if (numFramesAvailable > totalFrames - framesWritten)
-    // {
-    //     numFramesAvailable = totalFrames - framesWritten;
-    // }
-
-
-    //printf("numFramesAvailable: %d\n", numFramesAvailable);
-    //printf("numFramesPadding: %d\n", numFramesPadding);
 
     BYTE* pData;
     hr = IAudioRenderClient_GetBuffer(audio->pRenderClient, numFramesAvailable, &pData);
@@ -437,25 +400,13 @@ void audio_tick(Audio* audio)
         return;
     }
 
-
-    //float frequency = 450.0f; // A4
-    //float amplitude = 0.25f;
-    //static double theta = 0.0;
-    //double thetaIncrement = 2.0 * 3.14159 * frequency / pwfx->nSamplesPerSec;
-
     float* pFloatData = (float*)pData;
     float* pFloatDataStart = pFloatData;
     UINT32 frames = numFramesAvailable;
     //UINT32 channels = pwfx->nChannels;
 
-    // TODO: TEMP: Fill buffer??
-    // TODO: Definitely not correct.
-    for (int i = 0; i < numFramesAvailable * audio->pwfx->nBlockAlign; ++i)
-    {
-        pData[i] = 0;
-
-    }
-    memset(pData, 0, numFramesAvailable * audio->pwfx->nBlockAlign);
+    // Clear sound buffer.
+    memset(pData, 0, numFramesAvailable * (size_t)audio->pwfx->nBlockAlign);
 
 
     // Input data is 16bits per sample 
@@ -478,16 +429,11 @@ void audio_tick(Audio* audio)
         printf("Failed to IAudioRenderClient_ReleaseBuffer\n");
         return;
     }
-
-    //framesWritten += numFramesAvailable;
-
-    //}
-
-    printf("done\n");
 }
 
 void audio_destroy(Audio* audio)
 {
+    // TODO: clear sounds?
     if (audio->device) IMMDevice_Release(audio->device);
     audio->device = NULL;
 
