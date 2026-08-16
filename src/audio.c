@@ -124,6 +124,12 @@ void GetDefaultDevice(IMMDevice** device)
 
 Sound sound_from_wav(Wav* wav)
 {
+    if (wav->fmt.NumChannels > 2)
+    {
+        printf("%u input channels not supported.", wav->fmt.NumChannels);
+        return (Sound) { 0 };
+    }
+
     // TODO: this is the number of individual channel samples, not frames.
     const uint32_t bytes_per_sample = wav->fmt.BitsPerSample / 8;
     const uint32_t num_samples = wav->dataSize / bytes_per_sample;
@@ -324,19 +330,21 @@ static void write_sound(Sound* sound, float* out, uint32_t frames, uint32_t out_
         // TODO: i don't like this.
         float* input = sound->data + sound->cursor * sound->num_channels;
 
-        // TODO: this filling loop must be fast.
-        // TODO: MIX BASED OFF IN/OUT CHANNELS. mix func?
-        for (UINT32 ch = 0; ch < out_channels; ++ch)
+        // TODO: can definitely move if outside of loop.
+        if (sound->num_channels == 1)
         {
-            // TODO: hack for just duplicating the 2 channels, better way would be much nicer.
-            // TODO: doesn't even work 
-            if (ch % 2 == 0)
+            for (UINT32 ch = 0; ch < out_channels; ++ch)
             {
-                out[i * out_channels + ch] += input[ch];
+                out[i * out_channels + ch] += input[0];
             }
-            else
+        }
+        else if (sound->num_channels == 2)
+        {
+            // TODO: For now we're just duplicating the stereo pair for all
+            //       output channels. In the future we will handle differently.
+            for (int ch = 0; ch < out_channels; ++ch) 
             {
-                out[i * out_channels + ch] += input[ch];
+                out[i * out_channels + ch] += input[ch % 2];
             }
         }
 
@@ -346,6 +354,9 @@ static void write_sound(Sound* sound, float* out, uint32_t frames, uint32_t out_
 
 void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
 {
+    // TODO: note here we're using frames which is <= initial capacity of 
+    // mix_buffer but do we need to assert this? what if the 
+    //       system was reinitialised?
     memset(mixer->mix_buffer, 0, (size_t)frames * mixer->output_channels * sizeof(float));
 
     for (int i = 0; i < mixer->num_sounds; ++i)
@@ -370,12 +381,7 @@ void audio_tick(Audio* audio)
     printf("bufferFrameCount: %d\n", bufferFrameCount);
 
     DWORD flags = 0;
-    //UINT32 totalFrames = wave0.dataSize / wave0.fmt.BlockAlign;
     
-    // TODO: do we want to write all the frames in one tick? Or do we want to write a few frames each tick? (probably the latter)
-    //while (framesWritten < totalFrames)
-    //{
-        // This gets frames that are going to be played.
     UINT32 numFramesPadding;
     hr = IAudioClient_GetCurrentPadding(audio->pAudioClient, &numFramesPadding);
     if (FAILED(hr))
