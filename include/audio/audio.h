@@ -13,11 +13,15 @@ typedef struct IMMDevice IMMDevice;
 // TODO: Organise all this later.
 typedef struct 
 {
-    uint32_t cursor;
-    uint32_t num_frames;
-
     float* data;
+
+    uint32_t num_frames;
+    uint32_t num_channels;
+
+    uint32_t cursor;
 } Sound;
+
+Sound sound_from_wav(Wav* wav);
 
 #define MAX_SOUNDS 5
 
@@ -39,7 +43,7 @@ typedef struct
 
 uint8_t audio_init(Audio* audio);
 
-void audio_play(Audio* audio, Wav wav);
+void audio_play(Audio* audio, Sound sound);
 
 void audio_tick(Audio* audio);
 

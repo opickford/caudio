@@ -5,10 +5,8 @@
 #include <malloc.h>
 
 #define COBJMACROS
-#include <initguid.h>
 #include <mmDeviceapi.h>
 #include <Windows.h>
-#include <audioendpoints.h>
 #include <endpointvolume.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <Audioclient.h>
@@ -122,7 +120,47 @@ void GetDefaultDevice(IMMDevice** device)
     IMMDeviceCollection_Release(pCollection);
 
     *device = pEndpoint;
-    
+}
+
+Sound sound_from_wav(Wav* wav)
+{
+    // TODO: this is the number of individual channel samples, not frames.
+    const uint32_t bytes_per_sample = wav->fmt.BitsPerSample / 8;
+    const uint32_t num_samples = wav->dataSize / bytes_per_sample;
+
+    float* data = malloc(num_samples * sizeof(float));
+    if (!data)
+    {
+        printf("TODO: failed to malloc\n");
+        return;
+    }
+
+    // TODO: handle BitsPerSample? how do we deal if the wav is not 16 bits per sample? (or if it is not 2 channels?)
+    if (wav->fmt.BitsPerSample != 16)
+    {
+        printf("TODO: wav is not 16 bits per sample\n");
+        return;
+    }
+
+    for (int i = 0; i < num_samples; ++i)
+    {
+        int16_t d = ((int16_t*)wav->data)[i];
+        float f = d / (float)INT16_MAX;
+
+        data[i] = f;
+    }
+
+    uint32_t bytes_per_frame = bytes_per_sample * wav->fmt.NumChannels;
+    uint32_t num_frames = wav->dataSize / bytes_per_frame;
+
+    Sound sound = {
+        .data = data,
+        .num_frames = num_frames,
+        .num_channels = wav->fmt.NumChannels,
+        .cursor = 0
+    };
+
+    return sound;
 }
 
 // TODO: How do we return success/failure? (a common issue of mine.)
@@ -262,9 +300,7 @@ uint8_t audio_init(Audio* audio)
     return 1;
 }
 
-// TODO: readwav should be converting this to sound.. or maybe wav to sound..
-
-void audio_play(Audio* audio, Wav wav)
+void audio_play(Audio* audio, Sound sound)
 {
     // TODO: TEMP: remove this limit when I have a dynamic array.
     if (audio->num_sounds >= MAX_SOUNDS)
@@ -272,41 +308,6 @@ void audio_play(Audio* audio, Wav wav)
         printf("Max sounds reached.\n");
         return;
     }
-
-    // TODO: this is the number of individual channel samples, not frames.
-    const uint32_t bytes_per_sample = wav.fmt.BitsPerSample / 8;
-    const uint32_t num_samples = wav.dataSize / bytes_per_sample;
-
-    float* data = malloc(num_samples * sizeof(float));
-    if (!data)
-    {
-        printf("TODO: failed to malloc\n");
-        return;
-    }
-
-    if (wav.fmt.BitsPerSample != 16)
-    {
-        printf("TODO: wav is not 16 bits per sample\n");
-        return;
-    }
-
-    // TODO: handle BitsPerSample? how do we deal if the wav is not 16 bits per sample? (or if it is not 2 channels?)
-    for (int i = 0; i < num_samples; ++i)
-    {
-        int16_t d = ((int16_t*)wav.data)[i];
-        float f = d / (float)INT16_MAX;
-
-        data[i] = f;
-    }
-
-    uint32_t bytes_per_frame = bytes_per_sample * wav.fmt.NumChannels;
-    uint32_t num_frames = wav.dataSize / bytes_per_frame;
-
-    Sound sound = {
-        .cursor = 0,
-        .num_frames = num_frames,
-        .data = data
-    };
 
     audio->sounds[audio->num_sounds++] = sound;
 }
@@ -347,7 +348,6 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
     }
 }
 
-
 void audio_tick(Audio* audio)
 {
     HRESULT hr;
@@ -363,11 +363,7 @@ void audio_tick(Audio* audio)
 
     printf("bufferFrameCount: %d\n", bufferFrameCount);
 
-    
-    
     DWORD flags = 0;
-
-
     //UINT32 totalFrames = wave0.dataSize / wave0.fmt.BlockAlign;
     
     // TODO: do we want to write all the frames in one tick? Or do we want to write a few frames each tick? (probably the latter)
