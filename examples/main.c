@@ -23,8 +23,8 @@ int main()
 
     PrintDeviceName(audio.device);
 
-
     audio_play(&audio, wave0);
+    audio_play(&audio, wave1);
 
     while (1)
     {

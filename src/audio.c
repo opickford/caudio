@@ -274,6 +274,7 @@ void audio_play(Audio* audio, Wav wav)
         return;
     }
 
+    // TODO: this is the number of individual channel samples, not frames.
     uint32_t num_samples = wav.dataSize / (wav.fmt.BitsPerSample / 8);
 
     float* data = malloc(num_samples * sizeof(float));
@@ -327,15 +328,24 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
     //    printf("sound restarted\n");
     //    //return;
     //}
-    float* input = sound->data + sound->cursor * in_channels;
+
+    //float* input = sound->data + sound->cursor * in_channels;
    
     for (UINT32 i = 0; i < frames; ++i)
     {
+
+
         // Loop audio if at end, should only do this if sound is looping.
         if (sound->cursor >= sound->size)
         {
+            // TODO: MUST RESET INPUT HERE! OR JUST DO THIS DIFFERENTLY, IT'S A BIT SKETCH.
             sound->cursor = 0;
+
+            // TODO: hold up this isn't even reused.
         }
+
+        // TODO: i don't like this.
+        float* input = sound->data + sound->cursor * in_channels;
 
         // TODO: this filling loop must be fast.
         for (UINT32 ch = 0; ch < out_channels; ++ch)
@@ -343,11 +353,12 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
             // TODO: hack for just duplicating the 2 channels, better way would be much nicer.
             if (ch % 2 == 0)
             {
-                out[i * out_channels + ch] += input[i * in_channels + 0];
+                // TODO: still getting a crash here for some reason.
+                out[i * out_channels + ch] += input[ch];
             }
             else
             {
-                out[i * out_channels + ch] += input[i * in_channels + 1];
+                out[i * out_channels + ch] += input[ch];
             }
         }
 
@@ -450,8 +461,9 @@ void audio_tick(Audio* audio)
        
     // TODO: go through each sound, check if it has finished playing, if not, write to the output buffer.
 
-
+    // TODO: what happens to the audio->pwfx->nBlockAlign?
     write_sound(audio, &audio->sounds[0], pFloatData, frames);
+    write_sound(audio, &audio->sounds[1], pFloatData, frames);
 
 
 
