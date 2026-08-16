@@ -251,6 +251,17 @@ uint8_t audio_init(Audio* audio)
 
     printf("bufferFrameCount: %d\n", bufferFrameCount);
 
+    // TODO: extract to audio_mixer_init?
+    audio->mixer.output_channels = audio->pwfx->nChannels;
+    audio->mixer.mix_buffer_frames = bufferFrameCount; // TODO: this doesn't really change unless reinit?
+    
+    audio->mixer.mix_buffer = malloc(bufferFrameCount * audio->mixer.output_channels * sizeof(float));
+    if (!audio->mixer.mix_buffer)
+    {
+        printf("Failed to allocate mix_buffer.\n");
+        return 0;
+    }
+    
     hr = IAudioClient_GetService(
         audio->pAudioClient,
         &IID_IAudioRenderClient,
@@ -263,24 +274,7 @@ uint8_t audio_init(Audio* audio)
         return;
     }
 
-    /*
-    hr = IAudioRenderClient_GetBuffer(pRenderClient, bufferFrameCount, &pData);
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioRenderClient_GetBuffer\n");
-        return;
-    }
-
-    memcpy(pData, data, bufferFrameCount * fmt.BlockAlign);
-    hr = IAudioRenderClient_ReleaseBuffer(pRenderClient, bufferFrameCount, flags);
-
-    if (FAILED(hr))
-    {
-        printf("failed to releaase buffer\n");
-    }*/
-
-
+   
     // // TODO: Consider samplerates.
 
     // if (wave0.fmt.NumChannels != pwfx->nChannels || wave0.fmt.BitsPerSample != pwfx->wBitsPerSample)
@@ -289,6 +283,11 @@ uint8_t audio_init(Audio* audio)
     // }
 
     hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / audio->pwfx->nSamplesPerSec;
+
+
+
+
+
 
     hr = IAudioClient_Start(audio->pAudioClient);
     if (FAILED(hr))
@@ -303,21 +302,17 @@ uint8_t audio_init(Audio* audio)
 void audio_play(Audio* audio, Sound sound)
 {
     // TODO: TEMP: remove this limit when I have a dynamic array.
-    if (audio->num_sounds >= MAX_SOUNDS)
+    if (audio->mixer.num_sounds >= MAX_SOUNDS)
     {
         printf("Max sounds reached.\n");
         return;
     }
 
-    audio->sounds[audio->num_sounds++] = sound;
+    audio->mixer.sounds[audio->mixer.num_sounds++] = sound;
 }
 
-void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
+static void write_sound(Sound* sound, float* out, uint32_t frames, uint32_t out_channels)
 {
-    // TODO: stop hardcoding channels, need to get this from the sound data.
-    uint32_t in_channels = 2;
-    uint32_t out_channels = 2;
-   
     for (UINT32 i = 0; i < frames; ++i)
     {
         // Loop audio if at end, should only do this if sound is looping.
@@ -327,9 +322,10 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
         }
 
         // TODO: i don't like this.
-        float* input = sound->data + sound->cursor * in_channels;
+        float* input = sound->data + sound->cursor * sound->num_channels;
 
         // TODO: this filling loop must be fast.
+        // TODO: MIX BASED OFF IN/OUT CHANNELS. mix func?
         for (UINT32 ch = 0; ch < out_channels; ++ch)
         {
             // TODO: hack for just duplicating the 2 channels, better way would be much nicer.
@@ -345,6 +341,16 @@ void write_sound(Audio* audio, Sound* sound, float* out, uint32_t frames)
         }
 
         ++sound->cursor;
+    }
+}
+
+void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
+{
+    memset(mixer->mix_buffer, 0, (size_t)frames * mixer->output_channels * sizeof(float));
+
+    for (int i = 0; i < mixer->num_sounds; ++i)
+    {
+        write_sound(&mixer->sounds[i], mixer->mix_buffer, frames, mixer->output_channels);
     }
 }
 
@@ -398,12 +404,8 @@ void audio_tick(Audio* audio)
 
     float* pFloatData = (float*)pData;
     float* pFloatDataStart = pFloatData;
-    UINT32 frames = numFramesAvailable;
-    //UINT32 channels = pwfx->nChannels;
 
-    // Clear sound buffer.
-    memset(pData, 0, numFramesAvailable * (size_t)audio->pwfx->nBlockAlign);
-
+    audio_mixer_mix(&audio->mixer, numFramesAvailable);
 
     // Input data is 16bits per sample 
     // we need to convert to 32 bits expected output.
@@ -413,10 +415,9 @@ void audio_tick(Audio* audio)
     // TODO: go through each sound, check if it has finished playing, if not, write to the output buffer.
 
     // TODO: what happens to the audio->pwfx->nBlockAlign?
-    for (int i = 0; i < audio->num_sounds; ++i)
-    {
-        write_sound(audio, &audio->sounds[i], pFloatData, frames);
-    }
+
+    // Copy from mix buffer to actual audio buffer.
+    memcpy(pFloatData, audio->mixer.mix_buffer, (size_t)numFramesAvailable * audio->pwfx->nBlockAlign);
         
     hr = IAudioRenderClient_ReleaseBuffer(audio->pRenderClient, numFramesAvailable, flags);
 
@@ -429,7 +430,7 @@ void audio_tick(Audio* audio)
 
 void audio_destroy(Audio* audio)
 {
-    // TODO: clear sounds?
+    // TODO: clear sounds? mixer?
     if (audio->device) IMMDevice_Release(audio->device);
     audio->device = NULL;
 
