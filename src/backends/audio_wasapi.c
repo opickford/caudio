@@ -1,4 +1,4 @@
-#include "audio_backend.h" // TODO: sort this.
+#include "audio_backend.h"
 
 #define COBJMACROS
 #include <Audioclient.h>
