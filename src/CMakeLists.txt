@@ -1,6 +1,8 @@
 add_library(caudio STATIC
+    "audio_backend.h"
     "audio.c"
 	"wav.c"
+	"audio_wasapi.c"
    
     "../include/caudio/audio.h"
 	"../include/caudio/wav.h"

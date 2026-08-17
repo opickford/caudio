@@ -1,126 +1,37 @@
-#include "caudio/audio.h"
+#include "audio.h"
+
+#include "audio_backend.h"
+
+#include "caudio/wav.h"
+
 
 #include <stdio.h>
 #include <stdint.h>
 #include <malloc.h>
+#include <string.h>
 
-#define COBJMACROS
-#include <mmDeviceapi.h>
-#include <Windows.h>
-#include <endpointvolume.h>
-#include <functiondiscoverykeys_devpkey.h>
-#include <Audioclient.h>
 
-#include "caudio/wav.h"
+#define MAX_SOUND_INSTANCES 100
 
-// TODO: Define in separate header?
-const CLSID CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
-const IID IID_IMMDeviceEnumerator = { 0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
-const IID IID_IAudioMeterInformation = { 0xC02216F6, 0x8C67, 0x4B5B, { 0x9D, 0x00, 0xD0, 0x08, 0xE7, 0x3E, 0x00, 0x64 } };
-
-const IID IID_IAudioClient = { 0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2} };
-const IID IID_IAudioRenderClient = { 0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2} };
-
-// TODO: some device header?
-void PrintDeviceName(IMMDevice* device)
+typedef struct
 {
-    IPropertyStore* pProps = NULL;
-    LPWSTR pwszID = NULL;
+    uint32_t output_channels;
+    //uint32_t output_sample_rate;
 
-    HRESULT hr = IMMDevice_GetId(
-        device,
-        &pwszID
-    );
+    float* mix_buffer;
+    uint32_t mix_buffer_frames;
 
-    if (FAILED(hr))
-    {
-        printf("failed to get id\n");
-        return -1;
-    }
+    // TODO: temporary fixed buffer.
+    SoundInstance instances[MAX_SOUND_INSTANCES];
+    uint32_t num_instances;
 
-    hr = IMMDevice_OpenPropertyStore(device, STGM_READ, &pProps);
+} AudioMixer;
 
-    if (FAILED(hr))
-    {
-        printf("failed to open property store\n");
-        return -1;
-    }
-
-    PROPVARIANT varName = { 0 };
-    hr = IPropertyStore_GetValue(pProps, &PKEY_Device_FriendlyName, &varName);
-
-    if (FAILED(hr))
-    {
-        printf("failed to IPropertyStore_GetValue\n");
-        return -1;
-    }
-
-    if (varName.vt != VT_EMPTY)
-    {
-        printf("Endpoint %S\n", varName.pwszVal);
-    }
-
-    CoTaskMemFree(pwszID);
-    pwszID = NULL;
-    PropVariantClear(&varName);
-
-    IPropertyStore_Release(pProps);
-}
-
-// TODO: Some internal device file??
-void GetDefaultDevice(IMMDevice** device)
+typedef struct Audio
 {
-    IMMDeviceEnumerator* pEnumerator = NULL;
-    IMMDeviceCollection* pCollection = NULL;
-    IMMDevice* pEndpoint = NULL;
-
-    HRESULT hr = CoCreateInstance(
-        &CLSID_MMDeviceEnumerator,
-        NULL,
-        CLSCTX_ALL,
-        &IID_IMMDeviceEnumerator,
-        (void**)(&pEnumerator)
-    );
-
-    if (FAILED(hr))
-    {
-        printf("failed to create enumerator\n");
-        return -1;
-    }
-
-    if (!pEnumerator)
-    {
-        printf("pEnumerator is null.\n");
-        return -1;
-    }
-
-    IMMDeviceEnumerator_EnumAudioEndpoints(
-        pEnumerator,
-        eRender,
-        DEVICE_STATE_ACTIVE,
-        &pCollection
-    );
-
-    if (!pCollection)
-    {
-        printf("pCollection is null.\n");
-        return -1;
-    }
-
-    IMMDeviceEnumerator_GetDefaultAudioEndpoint(pEnumerator, eRender, eConsole, &pEndpoint);
-
-    if (FAILED(hr))
-    {
-        printf("failed to get endpoint\n");
-        return -1;
-    }
-
-
-    IMMDeviceEnumerator_Release(pEnumerator);
-    IMMDeviceCollection_Release(pCollection);
-
-    *device = pEndpoint;
-}
+    AudioBackend* backend;
+    AudioMixer mixer;
+} Audio;
 
 Sound sound_from_wav(Wav* wav)
 {
@@ -168,141 +79,36 @@ Sound sound_from_wav(Wav* wav)
     return sound;
 }
 
-// TODO: How do we return success/failure? (a common issue of mine.)
-uint8_t audio_init(Audio* audio)
+Audio* audio_create()
 {
-    memset(audio, 0, sizeof(Audio));
+    Audio* audio = calloc(1, sizeof(Audio));
 
-    // Initialise COM.
-    HRESULT hr = CoInitialize(NULL);
-
-    if (FAILED(hr))
+    if (!audio)
     {
-        printf("failed to init COM\n");
+        return 0; // TODO: handle failure.
+    }
+
+    AudioBackendInfo info;
+
+    audio->backend = audio_backend_create(&info);
+    if (!audio->backend)
+    {
+        free(audio);
         return 0;
     }
 
-    GetDefaultDevice(&audio->device);
-    
-#define REFTIMES_PER_SEC  10000000
-#define REFTIMES_PER_MILLISEC  10000
-
-    // TODO: this is only requesting a second, is this correct?
-
-    // TODO: make configurable?
-    REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_MILLISEC * 20; // 20ms, causes a delay otherwise.
-    //REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
-    REFERENCE_TIME hnsActualDuration;
-
-    UINT32 bufferFrameCount;
-    UINT32 numFramesAvailable;
-    UINT32 numFramesPadding;
-    BYTE* pData;
-    DWORD flags = 0;
-
-    hr = IMMDevice_Activate(
-        audio->device,
-        &IID_IAudioClient,
-        CLSCTX_ALL,
-        NULL,
-        (void**)&audio->pAudioClient
-    );
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IMMDevice_Activate\n");
-        return;
-    }
-
-    
-    hr = IAudioClient_GetMixFormat(audio->pAudioClient, &audio->pwfx);
-    
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_GetMixFormat\n");
-        return;
-    }
-
-    // TODO: better way of logging
-    printf("Num Channels: %u\n", audio->pwfx->nChannels);
-    printf("Bits Per Sample: %u\n", audio->pwfx->wBitsPerSample);
-    printf("Block Align: %u\n", audio->pwfx->nBlockAlign);
-    printf("Format Tag: %u\n", audio->pwfx->wFormatTag);
-    printf("Samples Per Second: %u\n", audio->pwfx->nSamplesPerSec);
-    
-    // TODO: Could try setting format to the closest match to the wav file. Although may not be 
-    //       that difficult to manually convert.
-    hr = IAudioClient_Initialize(
-        audio->pAudioClient,
-        AUDCLNT_SHAREMODE_SHARED,
-        0,
-        hnsRequestedDuration,
-        0,
-        audio->pwfx,
-        NULL
-    );
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_Initialize\n");
-        return;
-    }
-
-    hr = IAudioClient_GetBufferSize(audio->pAudioClient, &bufferFrameCount);
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_GetBufferSize\n");
-        return;
-    }
-
-    printf("bufferFrameCount: %d\n", bufferFrameCount);
-
     // TODO: extract to audio_mixer_init?
-    audio->mixer.output_channels = audio->pwfx->nChannels;
-    audio->mixer.mix_buffer_frames = bufferFrameCount; // TODO: this doesn't really change unless reinit?
-    
-    audio->mixer.mix_buffer = malloc(bufferFrameCount * audio->mixer.output_channels * sizeof(float));
+    audio->mixer.output_channels = info.channels;
+    audio->mixer.mix_buffer_frames = info.buffer_frames; // TODO: this doesn't really change unless reinit?
+
+    audio->mixer.mix_buffer = malloc((size_t)info.buffer_frames * info.channels * sizeof(float));
     if (!audio->mixer.mix_buffer)
     {
         printf("Failed to allocate mix_buffer.\n");
         return 0;
     }
-    
-    hr = IAudioClient_GetService(
-        audio->pAudioClient,
-        &IID_IAudioRenderClient,
-        &audio->pRenderClient
-    );
 
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_GetService\n");
-        return;
-    }
-
-   
-    // // TODO: Consider samplerates.
-
-    // if (wave0.fmt.NumChannels != pwfx->nChannels || wave0.fmt.BitsPerSample != pwfx->wBitsPerSample)
-    // {
-    //     printf("mismatch formats.\n");
-    // }
-
-    hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / audio->pwfx->nSamplesPerSec;
-
-    printf("Buffer: %u frames (%.2f ms)\n", bufferFrameCount, 1000.0 * (double)bufferFrameCount /
-        audio->pwfx->nSamplesPerSec);
-
-    hr = IAudioClient_Start(audio->pAudioClient);
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_Start\n");
-        return;
-    }
-
-    return 1;
+    return audio;
 }
 
 SoundInstance* audio_play(Audio* audio, Sound* sound)
@@ -345,7 +151,7 @@ SoundInstance* audio_play(Audio* audio, Sound* sound)
 
 static void write_sound(SoundInstance* inst, float* out, uint32_t frames, uint32_t out_channels)
 {
-    for (UINT32 i = 0; i < frames; ++i)
+    for (int i = 0; i < frames; ++i)
     {
         // Loop audio if at end, should only do this if sound is looping.
         if (inst->cursor >= inst->sound->num_frames)
@@ -367,7 +173,7 @@ static void write_sound(SoundInstance* inst, float* out, uint32_t frames, uint32
         // TODO: can definitely move if outside of loop.
         if (inst->sound->num_channels == 1)
         {
-            for (UINT32 ch = 0; ch < out_channels; ++ch)
+            for (int ch = 0; ch < out_channels; ++ch)
             {
                 out[i * out_channels + ch] += input[0] * inst->volume;
             }
@@ -386,7 +192,7 @@ static void write_sound(SoundInstance* inst, float* out, uint32_t frames, uint32
     }
 }
 
-void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
+static void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
 {
     // TODO: note here we're using frames which is <= initial capacity of 
     // mix_buffer but do we need to assert this? what if the 
@@ -401,75 +207,18 @@ void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
 
 void audio_tick(Audio* audio)
 {
-    HRESULT hr;
+    uint32_t num_frames_available = audio_backend_available_frames(audio->backend);
+    if (num_frames_available == 0) return;
 
-    UINT32 bufferFrameCount;
-    hr = IAudioClient_GetBufferSize(audio->pAudioClient, &bufferFrameCount);
+    audio_mixer_mix(&audio->mixer, num_frames_available);
 
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_GetBufferSize\n");
-        return;
-    }
-
-    DWORD flags = 0;
-    
-    // TODO: should log the padding to see how much delay we might have.
-    UINT32 numFramesPadding;
-    hr = IAudioClient_GetCurrentPadding(audio->pAudioClient, &numFramesPadding);
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioClient_GetCurrentPadding\n");
-        return;
-    }
-    
-    // Determine if we can write.
-    UINT32 numFramesAvailable = bufferFrameCount - numFramesPadding;
-    if (numFramesAvailable == 0)
-    {
-        return;
-    }
-
-    BYTE* pData;
-    hr = IAudioRenderClient_GetBuffer(audio->pRenderClient, numFramesAvailable, &pData);
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioRenderClient_GetBuffer\n");
-        return;
-    }
-
-    float* pFloatData = (float*)pData;
-    float* pFloatDataStart = pFloatData;
-
-    audio_mixer_mix(&audio->mixer, numFramesAvailable);
-
-    // Input data is 16bits per sample 
-    // we need to convert to 32 bits expected output.
-
-    // also input data is 2 channel, output is 8/
-       
-    // TODO: go through each sound, check if it has finished playing, if not, write to the output buffer.
-
-    // TODO: what happens to the audio->pwfx->nBlockAlign?
-
-    // Copy from mix buffer to actual audio buffer.
-    memcpy(pFloatData, audio->mixer.mix_buffer, (size_t)numFramesAvailable * audio->pwfx->nBlockAlign);
-        
-    hr = IAudioRenderClient_ReleaseBuffer(audio->pRenderClient, numFramesAvailable, flags);
-
-    if (FAILED(hr))
-    {
-        printf("Failed to IAudioRenderClient_ReleaseBuffer\n");
-        return;
-    }
+    audio_backend_write(audio->backend, audio->mixer.mix_buffer, num_frames_available);
 }
 
 void audio_destroy(Audio* audio)
 {
-    // TODO: clear sounds? mixer?
-    if (audio->device) IMMDevice_Release(audio->device);
-    audio->device = NULL;
+    audio_backend_destroy(audio->backend);
 
-    CoUninitialize();
+    // TODO: clear sounds? mixer?
+    
 }

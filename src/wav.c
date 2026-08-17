@@ -1,18 +1,13 @@
 #include "caudio/wav.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 Wav ReadWav(const char* fileName)
 {
-
     // http://soundfile.sapp.org/doc/WaveFormat/
-
     FILE* f = fopen(fileName, "rb");
-
-    // 
-
-    //WavHeader wh = { 0 };
 
     // TODO: Validate ids 
 
