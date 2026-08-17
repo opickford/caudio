@@ -1,7 +1,7 @@
 #include "sound.h"
 #include "sound_internal.h"
 
-#include "wav.h"
+#include "formats/wav.h"
 
 #include <malloc.h>
 

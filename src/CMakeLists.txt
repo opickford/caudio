@@ -1,11 +1,11 @@
 add_library(sfc STATIC
     "audio.c"
 
-    "audio_backend.h"
-	"audio_wasapi.c"
+    "backends/audio_backend.h"
+	"backends/audio_wasapi.c"
 
-	"wav.h"
-	"wav.c"
+	"formats/wav.h"
+	"formats/wav.c"
 
 	"sound.c"
 
@@ -24,4 +24,5 @@ target_include_directories(sfc
 
 	PRIVATE
 		$<BUILD_INTERFACE:${SOUNDFORC_SOURCE_DIR}/include/sfc>
+		$<BUILD_INTERFACE:${SOUNDFORC_SOURCE_DIR}/src>
 )
