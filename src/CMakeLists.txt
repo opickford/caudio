@@ -1,17 +1,21 @@
-add_library(audio STATIC
+add_library(caudio STATIC
+    "audio_backend.h"
     "audio.c"
+	"wav.c"
+	"audio_wasapi.c"
    
-
-    "../include/audio/audio.h"
+    "../include/caudio/audio.h"
+	"../include/caudio/wav.h"
 )
 
-add_library(audio::audio ALIAS audio)
+add_library(caudio::caudio ALIAS caudio)
 
-target_include_directories(audio 
+target_include_directories(caudio 
 	PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+		$<BUILD_INTERFACE:${CAUDIO_SOURCE_DIR}/include>
+		$<BUILD_INTERFACE:${CAUDIO_BINARY_DIR}/include>
 		$<INSTALL_INTERFACE:include>
 
 	PRIVATE
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/cecs>
+		$<BUILD_INTERFACE:${CAUDIO_SOURCE_DIR}/include/caudio>
 )

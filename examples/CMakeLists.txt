@@ -4,11 +4,11 @@
 
 target_link_libraries(example
     PRIVATE
-        audio
+        caudio
 )
 
 
-# target_link_libraries(audio
+# target_link_libraries(caudio
 # 	PRIVATE
 # 		ole32
 # 		uuid
