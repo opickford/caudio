@@ -1,21 +1,21 @@
-add_library(caudio STATIC
+add_library(sfc STATIC
     "audio_backend.h"
     "audio.c"
 	"wav.c"
 	"audio_wasapi.c"
    
-    "../include/caudio/audio.h"
-	"../include/caudio/wav.h"
+    "../include/sfc/audio.h"
+	"../include/sfc/wav.h"
 )
 
-add_library(caudio::caudio ALIAS caudio)
+add_library(sfc::sfc ALIAS sfc)
 
-target_include_directories(caudio 
+target_include_directories(sfc 
 	PUBLIC
-		$<BUILD_INTERFACE:${CAUDIO_SOURCE_DIR}/include>
-		$<BUILD_INTERFACE:${CAUDIO_BINARY_DIR}/include>
+		$<BUILD_INTERFACE:${SOUNDFORC_SOURCE_DIR}/include>
+		$<BUILD_INTERFACE:${SOUNDFORC_BINARY_DIR}/include>
 		$<INSTALL_INTERFACE:include>
 
 	PRIVATE
-		$<BUILD_INTERFACE:${CAUDIO_SOURCE_DIR}/include/caudio>
+		$<BUILD_INTERFACE:${SOUNDFORC_SOURCE_DIR}/include/sfc>
 )
