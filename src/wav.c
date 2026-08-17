@@ -1,4 +1,4 @@
-#include "caudio/wav.h"
+#include "sfc/wav.h"
 
 #include <stdio.h>
 #include <stdint.h>

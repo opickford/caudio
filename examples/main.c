@@ -1,5 +1,5 @@
-﻿#include "caudio/audio.h"
-#include "caudio/wav.h"
+﻿#include "sfc/audio.h"
+#include "sfc/wav.h"
 
 int main()
 {

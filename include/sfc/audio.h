@@ -1,10 +1,9 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
-
 #include <stdint.h>
 
-#include "caudio/wav.h"
+#include "sfc/wav.h"
 
 typedef struct Audio Audio;
 
