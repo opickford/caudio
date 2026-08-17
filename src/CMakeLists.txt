@@ -1,11 +1,17 @@
 add_library(sfc STATIC
-    "audio_backend.h"
     "audio.c"
-	"wav.c"
+
+    "audio_backend.h"
 	"audio_wasapi.c"
+
+	"wav.h"
+	"wav.c"
+
+	"sound.c"
+
    
     "../include/sfc/audio.h"
-	"../include/sfc/wav.h"
+	"../include/sfc/sound.h"
 )
 
 add_library(sfc::sfc ALIAS sfc)

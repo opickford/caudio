@@ -35,4 +35,7 @@ typedef struct {
 
 Wav sfc_wav_read(const char* fileName);
 
+typedef struct SFC_Sound SFC_Sound;
+SFC_Sound* sfc_sound_from_wav(Wav* wav);
+
 #endif
