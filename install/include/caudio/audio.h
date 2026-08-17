@@ -65,18 +65,18 @@ typedef struct
 
     AudioMixer mixer;
 
-} Audio;
+} SFC_Audio;
 
 
-uint8_t audio_init(Audio* audio);
+uint8_t audio_init(SFC_Audio* audio);
 
-SoundInstance* audio_play(Audio* audio, Sound* sound);
+SoundInstance* audio_play(SFC_Audio* audio, Sound* sound);
 
-void audio_tick(Audio* audio);
+void audio_tick(SFC_Audio* audio);
 
 void audio_mixer_mix(AudioMixer* mixer, uint32_t frames);
 
-void audio_destroy(Audio* audio);
+void audio_destroy(SFC_Audio* audio);
 
 // TODO: TEMP
 void PrintDeviceName(IMMDevice* device);

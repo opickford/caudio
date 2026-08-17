@@ -5,7 +5,7 @@
 
 #include "sfc/wav.h"
 
-typedef struct Audio Audio;
+typedef struct SFC_Audio SFC_Audio;
 
 // Represents the raw audio for a sound in float format.
 typedef struct 
@@ -17,27 +17,27 @@ typedef struct
 
     // TODO: sample rate
 
-} Sound;
+} SFC_Sound;
 
 // TODO: should be opaque, expose api for it instead.
 typedef struct
 {
-    Sound* sound;
+    SFC_Sound* sound;
     uint32_t cursor;
 
     float volume;
     uint8_t looping;
     uint8_t playing;
 
-} SoundInstance;
+} SFC_SoundInstance;
 
-Sound sound_from_wav(Wav* wav);
+SFC_Sound sfc_sound_from_wav(Wav* wav);
 
-Audio* audio_create();
-void audio_destroy(Audio* audio);
+SFC_Audio* sfc_audio_create();
+void sfc_audio_destroy(SFC_Audio* audio);
 
-SoundInstance* audio_play(Audio* audio, Sound* sound);
+SFC_SoundInstance* sfc_audio_play(SFC_Audio* audio, SFC_Sound* sound);
 
-void audio_tick(Audio* audio);
+void sfc_audio_tick(SFC_Audio* audio);
 
 #endif

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <malloc.h>
 
-Wav wav_read(const char* fileName)
+Wav sfc_wav_read(const char* fileName)
 {
     // http://soundfile.sapp.org/doc/WaveFormat/
     FILE* f = fopen(fileName, "rb");

@@ -20,23 +20,23 @@ typedef struct
     uint32_t mix_buffer_frames;
 
     // TODO: temporary fixed buffer.
-    SoundInstance instances[MAX_SOUND_INSTANCES];
+    SFC_SoundInstance instances[MAX_SOUND_INSTANCES];
     uint32_t num_instances;
 
 } AudioMixer;
 
-typedef struct Audio
+typedef struct SFC_Audio
 {
     AudioBackend* backend;
     AudioMixer mixer;
-} Audio;
+} SFC_Audio;
 
-Sound sound_from_wav(Wav* wav)
+SFC_Sound sfc_sound_from_wav(Wav* wav)
 {
     if (wav->fmt.NumChannels > 2)
     {
         printf("%u input channels not supported.", wav->fmt.NumChannels);
-        return (Sound) { 0 };
+        return (SFC_Sound) { 0 };
     }
 
     // TODO: this is the number of individual channel samples, not frames.
@@ -68,7 +68,7 @@ Sound sound_from_wav(Wav* wav)
     uint32_t bytes_per_frame = bytes_per_sample * wav->fmt.NumChannels;
     uint32_t num_frames = wav->dataSize / bytes_per_frame;
 
-    Sound sound = {
+    SFC_Sound sound = {
         .data = data,
         .num_frames = num_frames,
         .num_channels = wav->fmt.NumChannels
@@ -77,9 +77,9 @@ Sound sound_from_wav(Wav* wav)
     return sound;
 }
 
-Audio* audio_create()
+SFC_Audio* sfc_audio_create()
 {
-    Audio* audio = calloc(1, sizeof(Audio));
+    SFC_Audio* audio = calloc(1, sizeof(SFC_Audio));
 
     if (!audio)
     {
@@ -109,12 +109,12 @@ Audio* audio_create()
     return audio;
 }
 
-SoundInstance* audio_play(Audio* audio, Sound* sound)
+SFC_SoundInstance* sfc_audio_play(SFC_Audio* audio, SFC_Sound* sound)
 {
-    SoundInstance* inst = 0;
+    SFC_SoundInstance* inst = 0;
     for (int i = 0; i < audio->mixer.num_instances; ++i)
     {
-        SoundInstance* old = &audio->mixer.instances[i];
+        SFC_SoundInstance* old = &audio->mixer.instances[i];
         if (!old->playing)
         {
             // Found a sound to reuse.
@@ -138,7 +138,7 @@ SoundInstance* audio_play(Audio* audio, Sound* sound)
     }
 
     // Reset instance state.
-    memset(inst, 0, sizeof(SoundInstance));
+    memset(inst, 0, sizeof(SFC_SoundInstance));
 
     inst->playing = 1;
     inst->volume = 1;
@@ -147,7 +147,7 @@ SoundInstance* audio_play(Audio* audio, Sound* sound)
     return inst;
 }
 
-static void write_sound(SoundInstance* inst, float* out, uint32_t frames, uint32_t out_channels)
+static void write_sound(SFC_SoundInstance* inst, float* out, uint32_t frames, uint32_t out_channels)
 {
     for (int i = 0; i < frames; ++i)
     {
@@ -203,7 +203,7 @@ static void audio_mixer_mix(AudioMixer* mixer, uint32_t frames)
     }
 }
 
-void audio_tick(Audio* audio)
+void sfc_audio_tick(SFC_Audio* audio)
 {
     uint32_t num_frames_available = audio_backend_available_frames(audio->backend);
     if (num_frames_available == 0) return;
@@ -213,7 +213,7 @@ void audio_tick(Audio* audio)
     audio_backend_write(audio->backend, audio->mixer.mix_buffer, num_frames_available);
 }
 
-void audio_destroy(Audio* audio)
+void sfc_audio_destroy(SFC_Audio* audio)
 {
     audio_backend_destroy(audio->backend);
 
