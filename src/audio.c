@@ -1,4 +1,4 @@
-#include "audio/audio.h"
+#include "caudio/audio.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -11,7 +11,7 @@
 #include <functiondiscoverykeys_devpkey.h>
 #include <Audioclient.h>
 
-#include "audio/wav.h"
+#include "caudio/wav.h"
 
 // TODO: Define in separate header?
 const CLSID CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
@@ -188,7 +188,10 @@ uint8_t audio_init(Audio* audio)
 #define REFTIMES_PER_MILLISEC  10000
 
     // TODO: this is only requesting a second, is this correct?
-    REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
+
+    // TODO: make configurable?
+    REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_MILLISEC * 20; // 20ms, causes a delay otherwise.
+    //REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
     REFERENCE_TIME hnsActualDuration;
 
     UINT32 bufferFrameCount;
@@ -288,6 +291,9 @@ uint8_t audio_init(Audio* audio)
     // }
 
     hnsActualDuration = (double)REFTIMES_PER_SEC * bufferFrameCount / audio->pwfx->nSamplesPerSec;
+
+    printf("Buffer: %u frames (%.2f ms)\n", bufferFrameCount, 1000.0 * (double)bufferFrameCount /
+        audio->pwfx->nSamplesPerSec);
 
     hr = IAudioClient_Start(audio->pAudioClient);
     if (FAILED(hr))
@@ -408,6 +414,7 @@ void audio_tick(Audio* audio)
 
     DWORD flags = 0;
     
+    // TODO: should log the padding to see how much delay we might have.
     UINT32 numFramesPadding;
     hr = IAudioClient_GetCurrentPadding(audio->pAudioClient, &numFramesPadding);
     if (FAILED(hr))

@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#include "audio/wav.h"
+#include "caudio/wav.h"
 
 typedef struct IMMDevice IMMDevice;
 
