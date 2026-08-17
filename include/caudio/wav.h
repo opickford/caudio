@@ -33,6 +33,6 @@ typedef struct {
 
 } Wav;
 
-Wav ReadWav(const char* fileName);
+Wav wav_read(const char* fileName);
 
 #endif

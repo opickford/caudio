@@ -1,13 +1,11 @@
-﻿#include <stdio.h>
-
-#include "caudio/audio.h"
+﻿#include "caudio/audio.h"
 #include "caudio/wav.h"
 
 int main()
 {
-    Wav wave0 = ReadWav("C:/Users/olive/source/repos/audio/examples/res/plankton.wav");
-    Wav wave1 = ReadWav("C:/Users/olive/source/repos/audio/examples/res/omg.wav");
-    Wav boing_wav = ReadWav("C:/Users/olive/source/repos/audio/examples/res/boing.wav");
+    Wav wave0 = wav_read("C:/Users/olive/source/repos/audio/examples/res/plankton.wav");
+    Wav wave1 = wav_read("C:/Users/olive/source/repos/audio/examples/res/omg.wav");
+    Wav boing_wav = wav_read("C:/Users/olive/source/repos/audio/examples/res/boing.wav");
 
     Audio* audio = audio_create();
     if (!audio)

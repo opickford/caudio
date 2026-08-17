@@ -8,9 +8,6 @@
 
 typedef struct Audio Audio;
 
-
-// TODO: Organise all this later.
-
 // Represents the raw audio for a sound in float format.
 typedef struct 
 {
@@ -23,7 +20,7 @@ typedef struct
 
 } Sound;
 
-// TODO: should be opaque.
+// TODO: should be opaque, expose api for it instead.
 typedef struct
 {
     Sound* sound;
@@ -36,10 +33,6 @@ typedef struct
 } SoundInstance;
 
 Sound sound_from_wav(Wav* wav);
-
-
-
-
 
 Audio* audio_create();
 void audio_destroy(Audio* audio);

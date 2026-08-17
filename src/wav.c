@@ -2,9 +2,9 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <malloc.h>
 
-Wav ReadWav(const char* fileName)
+Wav wav_read(const char* fileName)
 {
     // http://soundfile.sapp.org/doc/WaveFormat/
     FILE* f = fopen(fileName, "rb");
@@ -17,12 +17,12 @@ Wav ReadWav(const char* fileName)
     if (rf.chunk_id != 0x46464952)
     {
         printf("invalid rf chunk id\n");
-        return;
+        return (Wav) { 0 };
     }
     if (rf.format != 0x45564157)
     {
         printf("invalid rf format\n");
-        return;
+        return (Wav) { 0 };
     }
 
     // Search for next chunks.
@@ -30,12 +30,16 @@ Wav ReadWav(const char* fileName)
     uint32_t chunkSize = 0;
 
     Wav wave = { 0 };
-
     WavFmt fmt = { 0 };
 
     while (fread(&chunkId, sizeof(chunkId), 1, f)) 
     {
-        fread(&chunkSize, sizeof(chunkSize), 1, f);
+        if (fread(&chunkSize, sizeof(chunkSize), 1, f) != 1)
+        {
+            // Found malformed chunk.
+            // TODO: do something? just skipping it here.
+            break;
+        }
 
         if (chunkId == 0x20746d66)
         {
@@ -48,13 +52,22 @@ Wav ReadWav(const char* fileName)
 
             if (!wave.data)
             {
-                printf("failed to mallco\n");
-                return;
+                printf("Failed to malloc for WAV data.\n");
+                return (Wav) { 0 };
             }
             
-            fread(wave.data, 1, wave.dataSize, f);
+            size_t bytes_read = fread(wave.data, 1, wave.dataSize, f);
 
-            // TODO: Ensure correct number of elements read.
+            // Ensure correct number of bytes were read.
+            if (bytes_read != wave.dataSize)
+            {
+                free(wave.data);
+                wave.data = 0;
+                wave.dataSize = 0;
+                printf("Unexpected EOF when reading WAV.\n");
+                fclose(f);
+                return (Wav) { 0 };
+            }
         }
         else
         {
