@@ -1,8 +1,7 @@
 #include "audio.h"
 
 #include "audio_backend.h"
-
-#include "sfc/wav.h"
+#include "sound_internal.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -30,52 +29,6 @@ typedef struct SFC_Audio
     AudioBackend* backend;
     AudioMixer mixer;
 } SFC_Audio;
-
-SFC_Sound sfc_sound_from_wav(Wav* wav)
-{
-    if (wav->fmt.NumChannels > 2)
-    {
-        printf("%u input channels not supported.", wav->fmt.NumChannels);
-        return (SFC_Sound) { 0 };
-    }
-
-    // TODO: this is the number of individual channel samples, not frames.
-    const uint32_t bytes_per_sample = wav->fmt.BitsPerSample / 8;
-    const uint32_t num_samples = wav->dataSize / bytes_per_sample;
-
-    float* data = malloc(num_samples * sizeof(float));
-    if (!data)
-    {
-        printf("TODO: failed to malloc\n");
-        return;
-    }
-
-    // TODO: handle BitsPerSample? how do we deal if the wav is not 16 bits per sample? (or if it is not 2 channels?)
-    if (wav->fmt.BitsPerSample != 16)
-    {
-        printf("TODO: wav is not 16 bits per sample\n");
-        return;
-    }
-
-    for (int i = 0; i < num_samples; ++i)
-    {
-        int16_t d = ((int16_t*)wav->data)[i];
-        float f = d / (float)INT16_MAX;
-
-        data[i] = f;
-    }
-
-    uint32_t bytes_per_frame = bytes_per_sample * wav->fmt.NumChannels;
-    uint32_t num_frames = wav->dataSize / bytes_per_frame;
-
-    SFC_Sound sound = {
-        .data = data,
-        .num_frames = num_frames,
-        .num_channels = wav->fmt.NumChannels
-    };
-
-    return sound;
-}
 
 SFC_Audio* sfc_audio_create()
 {
